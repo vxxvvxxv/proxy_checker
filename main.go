@@ -57,6 +57,7 @@ func main() {
 	destAddressExternal := flag.String("dest", "https://checker.soax.com/api/ipinfo", "count of iterations")
 	asyncChannels := flag.Int("async", 100, "count of async requests")
 	timeoutSeconds := flag.Int("timeout", 60, "seconds of timeout request")
+	reports := flag.Bool("reports", false, "save results in reports")
 	// Parse the flags.
 	flag.Parse()
 
@@ -88,13 +89,27 @@ func main() {
 	for {
 		select {
 		case <-done:
-			year, month, day := time.Now().Date()
+			ipList := getIPCounter(result.Success)
+			fmt.Printf("Success: %d | Error: %d | Count uniq IP: %d\n", len(result.Success), len(result.Error), len(ipList))
 
-			fmt.Println("Preparing reports...")
+			if *reports {
+				year, month, day := time.Now().Date()
 
-			result.createReport(result.Success, "PORT", fmt.Sprintf("log-%d-%d-%d_success.log", year, month, day))
-			result.createReport(result.Error, "PORT", fmt.Sprintf("log-%d-%d-%d_error.log", year, month, day))
-			result.createReport(getIPCounter(result.Success), "IP                 ", fmt.Sprintf("log-%d-%d-%d_ip.log", year, month, day))
+				fmt.Println("Preparing reports...")
+
+				nameFile := fmt.Sprintf("log-%d-%d-%d_%d_%d", year, month, day, *portFrom, *portTo)
+				nameSuccess := fmt.Sprintf("%s_success.log", nameFile)
+				nameError := fmt.Sprintf("%s_error.log", nameFile)
+				nameIP := fmt.Sprintf("%s_ip.log", nameFile)
+
+				result.createReport(result.Success, "PORT", nameSuccess)
+				result.createReport(result.Error, "PORT", nameError)
+				result.createReport(ipList, "IP                 ", nameIP)
+
+				fmt.Printf("Success requests saved in: %s\n", nameSuccess)
+				fmt.Printf("Error requests saved in: %s\n", nameError)
+				fmt.Printf("Uniq IP and count dublicates saved in: %s\n", nameIP)
+			}
 
 			fmt.Println("Done!")
 			return
