@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,28 +34,16 @@ type Response struct {
 	Response  string
 }
 
-type ResponseCheckIP struct {
-	Status bool
-	Reason string
-	Data   ResponseCheckIPData
-}
+type DuplicatesIpPort map[string]int
 
-type ResponseCheckIPData struct {
-	Carrier     string
-	City        string
-	CountryCode string
-	CountryName string
-	Ip          string
-	Isp         string
-	Region      string
-}
+const LabelPort = "%PORT%"
 
 func main() {
 	// Register flags.
 	proxyAddressExternal := flag.String("proxy-host", "", "socks5://host | http://host | https://host")
 	portFrom := flag.Int("proxy-port-from", 0, "Ex.: 17000")
 	portTo := flag.Int("proxy-port-to", 0, "Ex.: 17999")
-	destAddressExternal := flag.String("dest", "https://checker.soax.com/api/ipinfo", "count of iterations")
+	destAddressExternal := flag.String("dest", "https://ip.nf/me.json", "count of iterations")
 	asyncChannels := flag.Int("async", 100, "count of async requests")
 	timeoutSeconds := flag.Int("timeout", 60, "seconds of timeout request")
 	reports := flag.Bool("reports", false, "save results in reports")
@@ -89,7 +78,7 @@ func main() {
 	for {
 		select {
 		case <-done:
-			ipList := getIPCounter(result.Success)
+			ipList := getIPCounter(destUrl.String(), result.Success)
 			fmt.Printf("Success: %d | Error: %d | Count uniq IP: %d\n", len(result.Success), len(result.Error), len(ipList))
 
 			if *reports {
@@ -134,7 +123,9 @@ func main() {
 }
 
 func sendRequest(proxyAddressExternal *string, timeoutSeconds *int, port int, destUrl *url.URL, responseChan chan *Response) {
-	proxyUrl, err := url.Parse(*proxyAddressExternal + ":" + strconv.Itoa(port))
+	prepareURLString := strings.ReplaceAll(*proxyAddressExternal, LabelPort, strconv.Itoa(port))
+
+	proxyUrl, err := url.Parse(prepareURLString)
 	if err != nil {
 		body := fmt.Sprintf("Error on create address proxy: %s", err.Error())
 		responseChan <- createResponseToChan(port, false, err, body)
@@ -152,7 +143,9 @@ func sendRequest(proxyAddressExternal *string, timeoutSeconds *int, port int, de
 		responseChan <- createResponseToChan(port, false, err, body)
 		return
 	} else {
-		defer resp.Body.Close()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 
 		if resp.StatusCode != http.StatusOK {
 			body := fmt.Sprintf("Error on check StatusCode: %d", resp.StatusCode)
@@ -182,29 +175,12 @@ func createResponseToChan(port int, isSuccess bool, err error, response string) 
 	}
 }
 
-func getIPCounter(responses []*Response) []*Response {
-	dublicate := make(map[string]int, 0)
-
-	response := &ResponseCheckIP{}
-
-	// Find
-	for _, r := range responses {
-		err := json.Unmarshal([]byte(r.Response), response)
-		if err == nil {
-			if count, ok := dublicate[response.Data.Ip]; !ok {
-				dublicate[response.Data.Ip] = 1
-			} else {
-				dublicate[response.Data.Ip] = count + 1
-			}
-		} else {
-			fmt.Println("error on Unmarshal response: ", err)
-		}
-	}
-
+func getIPCounter(destAddr string, responses []*Response) []*Response {
+	duplicatesList := getCounterIpByChecker(destAddr, responses)
 	result := make([]*Response, 0)
 
 	// for
-	for ip, count := range dublicate {
+	for ip, count := range duplicatesList {
 		result = append(result, &Response{
 			Port:     fmt.Sprintf(ip + "            ")[0:15],
 			Response: strconv.Itoa(count),
@@ -219,7 +195,9 @@ func (r *Result) createReport(responses []*Response, cellOneName string, fileNam
 	if err != nil {
 		fmt.Println("error opening file:", err.Error())
 	} else {
-		defer f.Close()
+		defer func() {
+			_ = f.Close()
+		}()
 		log.SetOutput(f)
 	}
 
@@ -245,3 +223,100 @@ func (r *Result) createReport(responses []*Response, cellOneName string, fileNam
 func getLine() string {
 	return "--------------------------------------------------------------------"
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+func getCounterIpByChecker(destAddr string, responses []*Response) DuplicatesIpPort {
+	switch destAddr {
+	case "https://checker.soax.com/api/ipinfo":
+		return getDuplicatesCheckerSoaxCom(responses)
+	case "https://ip.nf/me.json":
+		return getDuplicatesCheckerIpNf(responses)
+	default:
+		return make(DuplicatesIpPort, 0)
+	}
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+// ResponseCheckerSoaxCom https://checker.soax.com/api/ipinfo
+type ResponseCheckerSoaxCom struct {
+	Status bool
+	Reason string
+	Data   ResponseCheckerSoaxComData
+}
+type ResponseCheckerSoaxComData struct {
+	Carrier     string
+	City        string
+	CountryCode string
+	CountryName string
+	Ip          string
+	Isp         string
+	Region      string
+}
+
+func getDuplicatesCheckerSoaxCom(responses []*Response) DuplicatesIpPort {
+	duplicatesList := make(DuplicatesIpPort, 0)
+
+	response := &ResponseCheckerSoaxCom{}
+
+	// Find
+	for _, r := range responses {
+		err := json.Unmarshal([]byte(r.Response), response)
+		if err == nil {
+			if count, ok := duplicatesList[response.Data.Ip]; !ok {
+				duplicatesList[response.Data.Ip] = 1
+			} else {
+				duplicatesList[response.Data.Ip] = count + 1
+			}
+		} else {
+			fmt.Println("error on Unmarshal response: ", err)
+		}
+	}
+
+	return duplicatesList
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+// ResponseIpNf https://ip.nf/me.json
+type ResponseIpNf struct {
+	Ip ResponseIpNfIp `json:"ip"`
+}
+
+type ResponseIpNfIp struct {
+	Ip          string  `json:"ip"`
+	Asn         string  `json:"asn"`
+	Netmask     int     `json:"netmask"`
+	Hostname    string  `json:"hostname"`
+	City        string  `json:"city"`
+	PostCode    string  `json:"post_code"`
+	Country     string  `json:"country"`
+	CountryCode string  `json:"country_code"`
+	Latitude    float64 `json:"latitude"`
+	Longitude   float64 `json:"longitude"`
+}
+
+func getDuplicatesCheckerIpNf(responses []*Response) DuplicatesIpPort {
+	duplicatesList := make(DuplicatesIpPort, 0)
+
+	response := &ResponseIpNf{}
+
+	// Find
+	for _, r := range responses {
+		err := json.Unmarshal([]byte(r.Response), response)
+		if err == nil {
+			if count, ok := duplicatesList[response.Ip.Ip]; !ok {
+				duplicatesList[response.Ip.Ip] = 1
+			} else {
+				duplicatesList[response.Ip.Ip] = count + 1
+			}
+		} else {
+			fmt.Println("error on Unmarshal response: ", err)
+		}
+	}
+
+	return duplicatesList
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
