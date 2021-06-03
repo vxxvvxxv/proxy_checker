@@ -12,4 +12,4 @@ PROXY_URL="http://$PROXY_USER:$PROXY_PASSWORD@$PROXY_ADDRESS"
 # -----------------
 
 # Run tests
-go run -race ./main.go -proxy-host=$PROXY_URL -proxy-port-from=1000 -proxy-port-to=2000 -dest=$DEST_ADDRESS -async=$ASYNC_REQUESTS -timeout=$TIMEOUT_TIME
+./bin/proxy_checker -proxy-host=$PROXY_URL -proxy-port-from=1000 -proxy-port-to=2000 -dest=$DEST_ADDRESS -async=$ASYNC_REQUESTS -timeout=$TIMEOUT_TIME
