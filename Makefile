@@ -8,5 +8,5 @@ clean:
 
 build_darwin_amd64:
 	@echo "> Build (darwin - amd64)"
-	@-go build -race -o ./bin/proxy_checker.darwin-amd64
+	@go build -race -o ./bin/proxy_checker.darwin-amd64
 
