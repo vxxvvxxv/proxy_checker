@@ -17,26 +17,26 @@ import (
 	"time"
 )
 
-type Result struct {
+type resultProxy struct {
 	ProxyAddress     string
 	DestAddress      string
 	Timeout          int
 	MaxAsyncRequests int
 	mu               *sync.Mutex
-	Error            []*Response
-	Success          []*Response
+	Error            []*resultResponse
+	Success          []*resultResponse
 }
 
-type Response struct {
+type resultResponse struct {
 	Port      string
 	IsSuccess bool
 	Error     error
 	Response  string
 }
 
-type DuplicatesIpPort map[string]int
+type resultDuplicatesIpPort map[string]int
 
-const LabelPort = "%PORT%"
+const labelPort = "%PORT%"
 
 func main() {
 	// Register flags.
@@ -57,16 +57,16 @@ func main() {
 
 	var countRequest int64 = 0
 	done := make(chan struct{}, 1)
-	responseChan := make(chan *Response, *asyncChannels)
+	responseChan := make(chan *resultResponse, *asyncChannels)
 
-	result := &Result{
+	result := &resultProxy{
 		ProxyAddress:     *proxyAddressExternal,
 		DestAddress:      *destAddressExternal,
 		Timeout:          *timeoutSeconds,
 		MaxAsyncRequests: *asyncChannels,
 		mu:               &sync.Mutex{},
-		Error:            make([]*Response, 0),
-		Success:          make([]*Response, 0),
+		Error:            make([]*resultResponse, 0),
+		Success:          make([]*resultResponse, 0),
 	}
 
 	fmt.Println("Starting...", "proxy:", *proxyAddressExternal, "from:", *portFrom, "to:", *portTo)
@@ -122,8 +122,8 @@ func main() {
 	}
 }
 
-func sendRequest(proxyAddressExternal *string, timeoutSeconds *int, port int, destUrl *url.URL, responseChan chan *Response) {
-	prepareURLString := strings.ReplaceAll(*proxyAddressExternal, LabelPort, strconv.Itoa(port))
+func sendRequest(proxyAddressExternal *string, timeoutSeconds *int, port int, destUrl *url.URL, responseChan chan *resultResponse) {
+	prepareURLString := strings.ReplaceAll(*proxyAddressExternal, labelPort, strconv.Itoa(port))
 
 	proxyUrl, err := url.Parse(prepareURLString)
 	if err != nil {
@@ -166,8 +166,8 @@ func sendRequest(proxyAddressExternal *string, timeoutSeconds *int, port int, de
 	}
 }
 
-func createResponseToChan(port int, isSuccess bool, err error, response string) *Response {
-	return &Response{
+func createResponseToChan(port int, isSuccess bool, err error, response string) *resultResponse {
+	return &resultResponse{
 		Port:      strconv.Itoa(port),
 		IsSuccess: isSuccess,
 		Error:     err,
@@ -175,13 +175,13 @@ func createResponseToChan(port int, isSuccess bool, err error, response string) 
 	}
 }
 
-func getIPCounter(destAddr string, responses []*Response) []*Response {
+func getIPCounter(destAddr string, responses []*resultResponse) []*resultResponse {
 	duplicatesList := getCounterIpByChecker(destAddr, responses)
-	result := make([]*Response, 0)
+	result := make([]*resultResponse, 0)
 
 	// for
 	for ip, count := range duplicatesList {
-		result = append(result, &Response{
+		result = append(result, &resultResponse{
 			Port:     fmt.Sprintf(ip + "            ")[0:15],
 			Response: strconv.Itoa(count),
 		})
@@ -190,7 +190,7 @@ func getIPCounter(destAddr string, responses []*Response) []*Response {
 	return result
 }
 
-func (r *Result) createReport(responses []*Response, cellOneName string, fileNameLogs string) {
+func (r *resultProxy) createReport(responses []*resultResponse, cellOneName string, fileNameLogs string) {
 	f, err := os.OpenFile(fileNameLogs, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println("error opening file:", err.Error())
@@ -226,14 +226,14 @@ func getLine() string {
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-func getCounterIpByChecker(destAddr string, responses []*Response) DuplicatesIpPort {
+func getCounterIpByChecker(destAddr string, responses []*resultResponse) resultDuplicatesIpPort {
 	switch destAddr {
 	case "https://checker.soax.com/api/ipinfo":
 		return getDuplicatesCheckerSoaxCom(responses)
 	case "https://ip.nf/me.json":
 		return getDuplicatesCheckerIpNf(responses)
 	default:
-		return make(DuplicatesIpPort, 0)
+		return make(resultDuplicatesIpPort, 0)
 	}
 }
 
@@ -255,8 +255,8 @@ type ResponseCheckerSoaxComData struct {
 	Region      string
 }
 
-func getDuplicatesCheckerSoaxCom(responses []*Response) DuplicatesIpPort {
-	duplicatesList := make(DuplicatesIpPort, 0)
+func getDuplicatesCheckerSoaxCom(responses []*resultResponse) resultDuplicatesIpPort {
+	duplicatesList := make(resultDuplicatesIpPort, 0)
 
 	response := &ResponseCheckerSoaxCom{}
 
@@ -297,8 +297,8 @@ type ResponseIpNfIp struct {
 	Longitude   float64 `json:"longitude"`
 }
 
-func getDuplicatesCheckerIpNf(responses []*Response) DuplicatesIpPort {
-	duplicatesList := make(DuplicatesIpPort, 0)
+func getDuplicatesCheckerIpNf(responses []*resultResponse) resultDuplicatesIpPort {
+	duplicatesList := make(resultDuplicatesIpPort, 0)
 
 	response := &ResponseIpNf{}
 
