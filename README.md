@@ -55,7 +55,7 @@ Or
 
 ## TODO
 
-- [ ] - Добавить для сборки https://github.com/goreleaser/goreleaser
-- [ ] - Добавить сортировку по кол-ву IP в отчёте
-- [ ] - Добавить проверку IP на любые URL
+- [ ] Добавить для сборки https://github.com/goreleaser/goreleaser
+- [ ] Добавить сортировку по кол-ву IP в отчёте
+- [ ] Добавить проверку IP на любые URL
 
