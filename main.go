@@ -142,28 +142,26 @@ func sendRequest(proxyAddressExternal *string, timeoutSeconds *int, port int, de
 		body := fmt.Sprintf("Error on get request: %s", err.Error())
 		responseChan <- createResponseToChan(port, false, err, body)
 		return
-	} else {
-		defer func() {
-			_ = resp.Body.Close()
-		}()
-
-		if resp.StatusCode != http.StatusOK {
-			body := fmt.Sprintf("Error on check StatusCode: %d", resp.StatusCode)
-			responseChan <- createResponseToChan(port, false, errors.New(body), body)
-			return
-		}
-
-		bodyBytes, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			body := fmt.Sprintf("Error on get body: %s", err.Error())
-			responseChan <- createResponseToChan(port, false, err, body)
-			return
-		}
-
-		bodyString := string(bodyBytes)
-		responseChan <- createResponseToChan(port, true, nil, bodyString)
+	}
+	if resp.StatusCode != http.StatusOK {
+		body := fmt.Sprintf("Error on check StatusCode: %d", resp.StatusCode)
+		responseChan <- createResponseToChan(port, false, errors.New(body), body)
 		return
 	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		body := fmt.Sprintf("Error on get body: %s", err.Error())
+		responseChan <- createResponseToChan(port, false, err, body)
+		return
+	}
+
+	bodyString := string(bodyBytes)
+	responseChan <- createResponseToChan(port, true, nil, bodyString)
+	return
 }
 
 func createResponseToChan(port int, isSuccess bool, err error, response string) *resultResponse {
